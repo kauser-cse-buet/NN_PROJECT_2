@@ -63,11 +63,41 @@ class CrossEntropyCost(object):
         """
         return (a-y)
 
+class SigmoidActivation(object):
+    @staticmethod
+    def fn(z):
+        """The sigmoid function."""
+        return 1.0/(1.0+np.exp(-z))
+    
+    @staticmethod
+    def fn_prime(z):
+        """Derivative of the sigmoid function."""
+        return SigmoidActivation.fn(z)*(1-SigmoidActivation.fn(z))
+
+
+class TanhActivation(object):
+    @staticmethod
+    def fn(x):
+        return np.tanh(x)
+
+    @staticmethod
+    def fn_prime(z):
+        return 1-np.tanh(z)**2
+
+class LecunTanhActivation(object):
+    @staticmethod
+    def fn(x):
+        return 1.7159 * np.tanh((2.0/3.0) * x)
+
+    @staticmethod
+    def fn_prime(x):
+        # return 1.7159 * (1-np.tanh((2.0/3.0) * x)**2) * (2.0 / 3.0)
+        return 1-np.tanh(x)**2
 
 #### Main Network class
 class Network(object):
 
-    def __init__(self, sizes, cost=CrossEntropyCost):
+    def __init__(self, sizes, cost=CrossEntropyCost, activation_fn=SigmoidActivation):
         """The list ``sizes`` contains the number of neurons in the respective
         layers of the network.  For example, if the list was [2, 3, 1]
         then it would be a three-layer network, with the first layer
@@ -82,6 +112,7 @@ class Network(object):
         self.sizes = sizes
         self.default_weight_initializer()
         self.cost=cost
+        self.activation_fn = activation_fn
 
     def default_weight_initializer(self):
         """Initialize each weight using a Gaussian distribution with mean 0
@@ -120,10 +151,38 @@ class Network(object):
         self.weights = [np.random.randn(y, x)
                         for x, y in zip(self.sizes[:-1], self.sizes[1:])]
 
+    def xavier_weight_initializer(self):
+        """
+        Xavier initialization
+
+        """
+        nin = self.sizes[0]
+        nout = self.sizes[-1]
+
+
+
+        init_range =  np.sqrt(6.0 / (nin + nout))
+
+        low = -1.0 * init_range
+        high = 1.0 * init_range
+
+
+        if self.activation_fn == SigmoidActivation:
+            low = low
+            high = high
+        elif self.activation_fn == TanhActivation:
+            low = 4.0 * low
+            high = 4.0 * high
+
+
+        self.biases = [np.random.randn(y, 1) for y in self.sizes[1:]]
+        self.weights = [np.random.uniform(low=low, high=high, size=(y, x))
+                        for x, y in zip(self.sizes[:-1], self.sizes[1:])]
+
     def feedforward(self, a):
         """Return the output of the network if ``a`` is input."""
         for b, w in zip(self.biases, self.weights):
-            a = sigmoid(np.dot(w, a)+b)
+            a = self.activation_fn.fn(np.dot(w, a)+b)
         return a
 
     def SGD(self, training_data, epochs, mini_batch_size, eta,
@@ -220,7 +279,7 @@ class Network(object):
         for b, w in zip(self.biases, self.weights):
             z = np.dot(w, activation)+b
             zs.append(z)
-            activation = sigmoid(z)
+            activation = self.activation_fn.fn(z)
             activations.append(activation)
         # backward pass
         delta = (self.cost).delta(zs[-1], activations[-1], y)
@@ -234,7 +293,7 @@ class Network(object):
         # that Python can use negative indices in lists.
         for l in xrange(2, self.num_layers):
             z = zs[-l]
-            sp = sigmoid_prime(z)
+            sp = self.activation_fn.fn_prime(z)
             delta = np.dot(self.weights[-l+1].transpose(), delta) * sp
             nabla_b[-l] = delta
             nabla_w[-l] = np.dot(delta, activations[-l-1].transpose())
